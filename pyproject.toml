@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "astro"
+version = "0.0.1"
+description = "MCTS reasoning experiments"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+packages = ["astro"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+markers = [
+  "unit: fast, isolated tests",
+  "integration: end-to-end tests"
+]
