@@ -423,55 +423,6 @@ class MCTSAstro:
 
             node = parent
 
-    # def _backprop(self, leaf: Node):
-
-    #     """Backpropagate along path to root.
-    #     Implements Eq. (3)(4):
-    #     - increment N(S_t) for each visited state
-    #     - update Q(S_t, a) using children's Q and N of S_{t+1} plus R(S_{t+1}).
-
-    #     Implements Eq. (4): when updating Q(S_t, a) for the edge (parent -> node),
-    #     we aggregate over the children of S_{t+1} (i.e., node.children):
-
-    #         sum_QN = sum_i Q(S_{t+1}, a_i) * N(S_{t+1}, a_i)
-    #         sum_N  = sum_i N(S_{t+1}, a_i)
-
-    #     and blend with the rollout reward R(S_{t+1}):
-
-    #         Q(S_t, a) = (sum_QN + R(S_{t+1})) / (sum_N + 1)
-
-    #     If node.children is empty, this reduces to Q(S_t, a) = R(S_{t+1}).
-
-    #     """
-    #     # Count the leaf itself
-    #     self.N_state[leaf.id] = self.N_state.get(leaf.id, 0) + 1
-
-    #     node = leaf
-    #     while node.parent is not None:
-    #         parent = node.parent
-
-    #         # Eq. (3): increment visit count for the parent state
-    #         self.N_state[parent.id] = self.N_state.get(parent.id, 0) + 1
-
-    #         # Edge (parent -> node)
-    #         a = node.action_from_parent
-    #         self.N_edge[(parent.id, a)] = self.N_edge.get((parent.id, a), 0) + 1
-
-    #         # Eq. (4): Q(parent, a) from children of S_{t+1} = node plus R(S_{t+1})
-    #         sum_QN = 0.0
-    #         sum_N = 0
-    #         for ch in node.children:
-    #             a2 = ch.action_from_parent
-    #             q_sa = self.Q_edge.get((node.id, a2), 0.0)
-    #             n_sa = self.N_edge.get((node.id, a2), 0)
-    #             sum_QN += q_sa * n_sa
-    #             sum_N += n_sa
-
-    #         R = node.reward_from_rollouts if node.reward_from_rollouts is not None else 0.0
-    #         new_Q = (sum_QN + R) / (sum_N + 1)
-    #         self.Q_edge[(parent.id, a)] = new_Q
-
-    #         node = parent
         # Helper function to validate the backpropagation is working
         def validate_backprop_invariants(self):
             """
@@ -546,20 +497,20 @@ def is_terminal_correct(node: Node, verifier: Verifier, ground_truth: str) -> bo
 def dfs_collect_terminals(root: Node) -> List[Node]:
     stack = [root]
     visited = {root.id}
-    terminals = []
-    
+    terminals: List[Node] = []
+
     while stack:
         n = stack.pop()
-        
-        # A node is terminal if its rollouts were evaluated
-        if n.reward_from_rollouts is not None:
+
+        # terminal if it has no children
+        if not n.children:
             terminals.append(n)
-        
+
         for ch in n.children:
             if ch.id not in visited:
                 visited.add(ch.id)
                 stack.append(ch)
-    
+
     return terminals
 
 
@@ -588,7 +539,8 @@ def linearize_with_backtracking(
     policy: LMPolicy,
     k_backtracks: int = 1,
 ) -> LinearizationResult:
-    """Implements Algorithm 1 at a high level.
+    """
+    Implements Algorithm 1 at a high level.
     - Collect terminal nodes (correct & incorrect).
     - Filter to a subset of correct terminals with "high-quality" steps via policy self-eval.
     - Sample 1 correct (ψ*) and up to k incorrect with unique answers.
@@ -690,7 +642,7 @@ class RunConfig:
     k_actions: int = 2
     m_rollouts: int = 4
     iterations: int = 3
-    max_depth: int = 3
+    max_depth: int = 2
     cpuct: float = 1.0
     seed: int = 0
     out_jsonl: str = "astro_mcts_dataset.jsonl"
@@ -705,6 +657,7 @@ LMCTX = LMContextHolder()
 
 def main(cfg: RunConfig):
     set_seed(cfg.seed)
+
 
     print(f"Loading model: {cfg.model_name}")
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)

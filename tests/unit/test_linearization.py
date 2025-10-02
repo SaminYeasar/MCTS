@@ -1,11 +1,12 @@
 # test_linearization.py
 import pytest
-
+from dataclasses import dataclass, field
+from typing import List
 from astro import (
     Node,
     Verifier,
     cot_from_linearized_sequence,
-    cot_from_nodes_to_text,
+    cot_from_nodes_to_text, dfs_collect_terminals
 )
 
 SELF_REF_LINE = "(Self-reflection) The previous branch led to an incorrect direction; I backtrack to an earlier state."
@@ -89,6 +90,33 @@ def test_cot_linearization_with_backtracking_and_extracted_answer():
     # Also validate cot_from_nodes_to_text reconstructs the last path's steps
     rendered_path = cot_from_nodes_to_text(ac)
     assert rendered_path == "- Step: Try approach A\n- Step: Correct compute 7"
+
+
+
+
+
+def test_dfs_collect_terminals():
+    @dataclass
+    class dummy_Node:
+        id: int
+        children: List["dummy_Node"] = field(default_factory=list)
+
+        def add_child(self, child: "dummy_Node"):
+            self.children.append(child)
+    
+    root = dummy_Node(0)
+    left = dummy_Node(1)        # will be a leaf
+    right = dummy_Node(2)
+    deep = dummy_Node(3)        # will be a leaf
+
+    root.add_child(left)
+    root.add_child(right)
+    right.add_child(deep)
+
+    terminals = dfs_collect_terminals(root)
+    term_ids = sorted(n.id for n in terminals)
+
+    assert term_ids == [1, 3], f"Expected leaves [1,3], got {term_ids}"
 
 
 # Optional: run directly (handy for debugger)
