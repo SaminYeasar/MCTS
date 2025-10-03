@@ -524,13 +524,49 @@ def path_from_root(node: Node) -> List[Node]:
 
 
 def lca_prefix_length(a: List[Node], b: List[Node]) -> int:
-    """Length of longest common prefix between two root-to-node paths."""
+    """
+    Length of longest common prefix between two root-to-node paths.
+    Finding the Backtrack Point: would tell you exactly where the two sequences diverged.
+    """
+
+    # Sets the maximum possible length to check (L) as the length of the shorter path. This prevents index errors.
     L = min(len(a), len(b))
     i = 0
+    # The loop continues as long as: 
+    # 1) the index i is within the bounds of the shorter list, AND 
+    # 2) the node at the current index in path a has the same unique ID as the node at the same index in path b
     while i < L and a[i].id == b[i].id:
+        # Increments the counter i every time a common node is found, extending the common prefix length.
         i += 1
     return i
 
+
+def merge_in(L: List[Node],path_nodes: List[Node]) -> List[Node]:
+    """
+    Merge a root->leaf path into the running linearization L without
+    deleting prior content, and explicitly insert a backtrack hop to the LCA
+    so downstream CoT can detect self-reflection.
+    """
+    if not L:
+        L = path_nodes[:]                 # take the first path as-is
+        return L
+
+    # Current "position" is the path to the last node we just wrote into L.
+    curr_path = path_from_root(L[-1])
+
+    # Find LCA prefix length between the current position and the new path.
+    prefix = lca_prefix_length(curr_path, path_nodes)
+
+    # 1) Insert an explicit hop back to the LCA (even if already in L)
+    if prefix > 0:
+        lca_node = curr_path[prefix - 1]
+        L.append(lca_node)                # duplicate on purpose → signals backtrack
+
+    # 2) Append only the novel suffix of the new path (l − L by id, in order)
+    L_ids = {n.id for n in L}
+    novel_tail = [n for n in path_nodes[prefix:] if n.id not in L_ids]
+    L.extend(novel_tail)
+    return L
 
 def linearize_with_backtracking(
     root: Node,
@@ -580,26 +616,31 @@ def linearize_with_backtracking(
         if len(uniq_incorrect) >= k_backtracks:
             break
 
+    # correct_star = incorrect[0]
+    # uniq_incorrect = incorrect
+
     # Merge sequences
     L: List[Node] = []
-    def merge_in(path_nodes: List[Node]):
-        nonlocal L
-        if not L:
-            L = path_nodes
-            return
-        prefix = lca_prefix_length(L, path_nodes)
-        L = L[:prefix] + path_nodes[prefix:]
+    # def merge_in(path_nodes: List[Node]):
+    #     nonlocal L
+    #     if not L:
+    #         L = path_nodes[:]
+    #         return
+    #     L_ids = {n.id for n in L}
+    #     L.extend([n for n in path_nodes if n.id not in L_ids])
 
+        
     for n in uniq_incorrect + [correct_star]:
         pn = path_from_root(n)
-        merge_in(pn)
+        L = merge_in(L, pn)
+
 
     return LinearizationResult(L_nodes=L, correct_terminal=correct_star, incorrect_terminals=uniq_incorrect)
 
 
 # ------------------------- CoT Translation -----------------------------------
 
-def cot_from_linearized_sequence(x: str, L_nodes: List[Node], verifier: Verifier, ground_truth: str) -> str:
+def cot_from_linearized_sequence(x: str, L_nodes: List[Node]) -> str:
     """Translate L into a natural-language CoT that includes self-reflection/backtracking cues.
     This is a simple deterministic renderer based on node steps and path relations.
     """

@@ -6,7 +6,7 @@ from astro import (
     Node,
     Verifier,
     cot_from_linearized_sequence,
-    cot_from_nodes_to_text, dfs_collect_terminals
+    cot_from_nodes_to_text, dfs_collect_terminals, path_from_root, merge_in
 )
 
 SELF_REF_LINE = "(Self-reflection) The previous branch led to an incorrect direction; I backtrack to an earlier state."
@@ -91,8 +91,76 @@ def test_cot_linearization_with_backtracking_and_extracted_answer():
     rendered_path = cot_from_nodes_to_text(ac)
     assert rendered_path == "- Step: Try approach A\n- Step: Correct compute 7"
 
+# --- Test case: three terminal nodes (2 incorrect, 1 correct) ---
 
+def test_merge_in():
+    """
+    Tree (all terminals at layer 2):
+          root(0)
+            |
+           A(1)
+         /     \
+       B(2)    C(3)   and D(4) as a sibling of C for a third terminal
+                \
+                 D(4)
+    Paths:
+      P_incorrect1: root -> A -> B
+      P_incorrect2: root -> A -> C
+      P_correct:    root -> A -> D
 
+    Merge order: incorrect1, incorrect2, correct
+    Expected L (by action_from_parent):
+      [None, "A", "B", "A", "C", "A", "D"]
+      - 'A' duplicates twice (one per branch switch) as backtrack markers.
+      - Final node is the correct leaf (D).
+    """
+    
+    x="rand: foo(bar)?"
+
+    # Build nodes
+    root = Node(id=0, x=x, steps=[], parent=None, action_from_parent=None)
+
+    A = Node(id=1, x=root.x, steps=["A"], parent=root, action_from_parent="A")
+    root.children = [A]
+
+    B = Node(id=2, x=root.x, steps=A.steps + ["B"], parent=A, action_from_parent="B")
+    C = Node(id=3, x=root.x, steps=A.steps + ["C"], parent=A, action_from_parent="C")
+    D = Node(id=4, x=root.x, steps=A.steps + ["D"], parent=A, action_from_parent="D")
+    A.children = [B, C, D]
+
+    # Mark terminals (two incorrect, one correct)
+    B.final_answer, B.reward_from_rollouts = "40", 0.0   # incorrect
+    C.final_answer, C.reward_from_rollouts = "41", 0.0   # incorrect
+    D.final_answer, D.reward_from_rollouts = "42", 1.0   # correct
+
+    # Build paths to terminals
+    P_incorrect1 = path_from_root(B)  # [root, A, B]
+    P_incorrect2 = path_from_root(C)  # [root, A, C]
+    P_correct    = path_from_root(D)  # [root, A, D]
+
+    # Merge in order: incorrect1, incorrect2, correct
+    L: List[Node] = []
+    L = merge_in(L, P_incorrect1)
+    L = merge_in(L, P_incorrect2)
+    L = merge_in(L, P_correct)  
+
+    # Assert the linearized sequence of actions (None for root)
+    actions = [n.action_from_parent for n in L]
+    assert actions == [None, "A", "B", "A", "C", "A", "D"]
+
+    # Backtrack markers: the duplicated LCA 'A' should appear exactly 3 times:
+    #   - once as part of first path,
+    #   - plus 2 duplicates (one per branch switch).
+    count_A_nodes = sum(1 for n in L if n is A)
+    assert count_A_nodes == 3
+
+    # Final node is the correct terminal
+    assert L[-1] is D
+    assert D.final_answer == "42" and D.reward_from_rollouts == 1.0
+
+    cot_sequence = cot_from_linearized_sequence(x=x, L_nodes=L)
+
+    print(cot_sequence)
 
 
 def test_dfs_collect_terminals():
@@ -120,5 +188,5 @@ def test_dfs_collect_terminals():
 
 
 # Optional: run directly (handy for debugger)
-if __name__ == "__main__":
-    pytest.main(["-q", __file__])
+# if __name__ == "__main__":
+#     pytest.main(["-q", __file__])
